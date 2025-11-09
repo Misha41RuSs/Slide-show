@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.layout.Region?>
+
+<BorderPane xmlns:fx="http://javafx.com/fxml"
+            fx:controller="org.swe.slideshow.Controller"
+            prefWidth="800" prefHeight="1000">
+    
+    <top>
+        <VBox spacing="10" style="-fx-background-color: #f0f0f0;">
+            <padding>
+                <Insets top="10" right="10" bottom="10" left="10"/>
+            </padding>
+            
+            <HBox spacing="10" alignment="CENTER">
+                <Label text="Каталог:"/>
+                <Button fx:id="selectDirectoryButton" text="Выбрать каталог" 
+                        onAction="#onSelectDirectoryClick"/>
+                <Label text="Формат:"/>
+                <ComboBox fx:id="formatComboBox" prefWidth="120" 
+                          onAction="#onFormatChange"/>
+                <Label text="Задержка (мс):"/>
+                <TextField fx:id="delayTextField" prefWidth="80"/>
+                <Region HBox.hgrow="ALWAYS"/>
+            </HBox>
+            
+            <HBox spacing="10" alignment="CENTER">
+                <Button fx:id="startButton" text="Запуск" 
+                        onAction="#onStartClick" 
+                        style="-fx-background-color: #4CAF50; -fx-text-fill: white;"/>
+                <Button fx:id="stopButton" text="Останов" 
+                        onAction="#onStopClick"
+                        style="-fx-background-color: #f44336; -fx-text-fill: white;"/>
+                <Button fx:id="prevButton" text="◄ Предыдущее" 
+                        onAction="#onPrevClick"/>
+                <Button fx:id="nextButton" text="Следующее ►" 
+                        onAction="#onNextClick"/>
+            </HBox>
+            
+            <Label fx:id="statusLabel" text="Готов к работе"/>
+        </VBox>
+    </top>
+    
+    <center>
+        <VBox alignment="CENTER" spacing="10">
+            <padding>
+                <Insets top="20" right="20" bottom="20" left="20"/>
+            </padding>
+            
+            <ImageView fx:id="screen" 
+                       fitWidth="700" 
+                       fitHeight="450" 
+                       preserveRatio="true"
+                       style="-fx-border-color: #cccccc; -fx-border-width: 2;"/>
+        </VBox>
+    </center>
+    
+    <bottom>
+        <VBox alignment="CENTER" spacing="5">
+            <padding>
+                <Insets top="15" right="20" bottom="15" left="20"/>
+            </padding>
+            <Pane fx:id="indicatorPane" prefHeight="220" prefWidth="600" minHeight="220"/>
+        </VBox>
+    </bottom>
+    
+</BorderPane>
