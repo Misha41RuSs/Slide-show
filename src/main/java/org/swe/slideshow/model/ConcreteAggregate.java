@@ -2,36 +2,32 @@ package org.swe.slideshow.model;
 
 import javafx.scene.image.Image;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.stream.Stream;
 
 public class ConcreteAggregate implements Aggregate {
     private String filetop;
     private String imageFormat;
-    private List<File> imageFiles;
+    private final SlideCollection slideCollection;
     
     @Override
     public Iterator getIterator() {
-        return new ImageIterator();
+        return new ImageIterator(slideCollection);
     }
     
     public ConcreteAggregate(String filetop, String imageFormat) {
         this.filetop = filetop;
         this.imageFormat = imageFormat;
-        this.imageFiles = new ArrayList<>();
+        this.slideCollection = new SlideCollection();
         loadImageFiles();
     }
     
     private void loadImageFiles() {
-        imageFiles.clear();
+        slideCollection.clear();
         if (filetop == null || filetop.isEmpty()) {
             return;
         }
@@ -43,26 +39,30 @@ public class ConcreteAggregate implements Aggregate {
         
         try (Stream<Path> paths = Files.walk(rootPath)) {
             paths.filter(Files::isRegularFile)
-                 .filter(path -> {
-                     String fileName = path.getFileName().toString().toLowerCase();
-                     return fileName.endsWith(".png") || 
-                            fileName.endsWith(".jpg") || 
-                            fileName.endsWith(".jpeg") ||
-                            fileName.endsWith(".gif") ||
-                            fileName.endsWith(".bmp");
-                 })
-                 .filter(path -> {
-                     if (imageFormat == null || imageFormat.isEmpty() || imageFormat.equals("*")) {
-                         return true;
-                     }
-                     String fileName = path.getFileName().toString().toLowerCase();
-                     String format = imageFormat.toLowerCase().replace("*", "").replace(".", "");
-                     return fileName.endsWith("." + format);
-                 })
-                 .forEach(path -> imageFiles.add(path.toFile()));
+                    .filter(this::isSupportedImage)
+                    .filter(this::matchesSelectedFormat)
+                    .forEach(path -> slideCollection.add(path.toAbsolutePath().toString()));
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    private boolean isSupportedImage(Path path) {
+        String fileName = path.getFileName().toString().toLowerCase();
+        return fileName.endsWith(".png") ||
+                fileName.endsWith(".jpg") ||
+                fileName.endsWith(".jpeg") ||
+                fileName.endsWith(".gif") ||
+                fileName.endsWith(".bmp");
+    }
+
+    private boolean matchesSelectedFormat(Path path) {
+        if (imageFormat == null || imageFormat.isEmpty() || "*".equals(imageFormat)) {
+            return true;
+        }
+        String fileName = path.getFileName().toString().toLowerCase();
+        String format = imageFormat.toLowerCase().replace("*", "").replace(".", "");
+        return fileName.endsWith("." + format);
     }
     
     public void setFiletop(String filetop) {
@@ -76,22 +76,27 @@ public class ConcreteAggregate implements Aggregate {
     }
     
     public int getImageCount() {
-        return imageFiles.size();
+        return slideCollection.size();
     }
     
     private class ImageIterator implements Iterator {
+        private final SlideCollection collection;
         private int current = -1;
+
+        private ImageIterator(SlideCollection collection) {
+            this.collection = collection;
+        }
         
         private Image getImage(int index) {
-            if (index < 0 || index >= imageFiles.size()) {
+            String imagePath = collection.getPath(index);
+            if (imagePath == null) {
                 return null;
             }
             
-            File file = imageFiles.get(index);
-            try {
-                InputStream stream = new FileInputStream(file);
+            Path path = Paths.get(imagePath);
+            try (InputStream stream = Files.newInputStream(path)) {
                 return new Image(stream);
-            } catch (FileNotFoundException e) {
+            } catch (IOException e) {
                 e.printStackTrace();
                 return null;
             }
@@ -99,37 +104,51 @@ public class ConcreteAggregate implements Aggregate {
         
         @Override
         public boolean hasNext(int x) {
-            return current + x < imageFiles.size();
+            return collection.size() > 0 && current + x < collection.size();
         }
         
         @Override
         public Object next() {
+            if (collection.size() == 0) {
+                return null;
+            }
             if (hasNext(1)) {
                 current++;
-                return getImage(current);
             } else {
                 current = 0;
-                return getImage(0);
             }
+            return getImage(current);
         }
         
         @Override
         public Object preview() {
+            if (collection.size() == 0) {
+                return null;
+            }
             if (current > 0) {
                 current--;
-                return getImage(current);
             } else {
-                current = imageFiles.size() - 1;
-                return getImage(current);
+                current = collection.size() - 1;
             }
+            return getImage(current);
         }
         
         @Override
         public int getCurrentIndex() {
             if (current < 0) return 1;
-            if (current >= imageFiles.size()) return imageFiles.size();
+            if (current >= collection.size()) return collection.size();
             return current + 1;
+        }
+
+        @Override
+        public String getCurrentItemId() {
+            if (current < 0) {
+                return null;
+            }
+            return collection.getPath(current);
         }
     }
 }
+
+
 

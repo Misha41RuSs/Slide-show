@@ -5,5 +5,8 @@ public interface Iterator {
     Object next();
     Object preview();
     int getCurrentIndex();
+    String getCurrentItemId();
 }
+
+
 

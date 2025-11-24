@@ -56,6 +56,23 @@
                        fitHeight="450" 
                        preserveRatio="true"
                        style="-fx-border-color: #cccccc; -fx-border-width: 2;"/>
+            
+            <Label text="Впечатления о кадре"/>
+            <TextArea fx:id="impressionTextArea"
+                      prefWidth="700"
+                      prefRowCount="4"
+                      wrapText="true"
+                      promptText="Поделитесь впечатлением, например: «Отличный вид!»"/>
+            <HBox spacing="10" alignment="CENTER" prefWidth="700">
+                <Label text="Эмоция"/>
+                <ComboBox fx:id="emotionComboBox"
+                          prefWidth="180"/>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Label fx:id="impressionStatusLabel" text="Нет изображения" style="-fx-text-fill: #666666;"/>
+                <Button fx:id="saveImpressionButton"
+                        text="Сохранить впечатление"
+                        onAction="#onSaveImpressionClick"/>
+            </HBox>
         </VBox>
     </center>
     

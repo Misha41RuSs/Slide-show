@@ -8,6 +8,7 @@ import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
@@ -18,8 +19,20 @@ import javafx.util.Duration;
 import org.swe.slideshow.model.*;
 
 import java.io.File;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 public class Controller {
+    private static final String DEFAULT_EMOTION = "🙂 Нейтрально";
+    private static final String[] EMOTION_OPTIONS = new String[]{
+            DEFAULT_EMOTION,
+            "😊 Радость",
+            "🤩 Восхищение",
+            "😮 Удивление",
+            "😢 Грусть",
+            "😌 Спокойствие",
+            "😎 Вдохновение"
+    };
     @FXML
     private ImageView screen;
     
@@ -49,6 +62,18 @@ public class Controller {
     
     @FXML
     private Pane indicatorPane;
+
+    @FXML
+    private TextArea impressionTextArea;
+
+    @FXML
+    private Button saveImpressionButton;
+
+    @FXML
+    private Label impressionStatusLabel;
+
+    @FXML
+    private ComboBox<String> emotionComboBox;
     
     private ConcreteAggregate slides;
     private Iterator iter;
@@ -61,11 +86,15 @@ public class Controller {
     private Director director;
     private Timeline timerTimeline;
     private long startTime;
-    private float maxTime = 300.0f; // Максимальное время 5 минут (300 секунд)
+    private float maxTime = 300.0f;
+    private ImpressionStore impressionStore;
+    private String currentImageId;
+    private boolean impressionUpdatingInternally;
     
     @FXML
     public void initialize() {
-        formatComboBox.getItems().addAll("*", "*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp");
+        formatComboBox.getItems().addAll("*", "*.png",
+                "*.jpg", "*.jpeg", "*.gif", "*.bmp");
         formatComboBox.setValue("*");
 
         delayTextField.setText("2000");
@@ -74,6 +103,8 @@ public class Controller {
         iter = slides.getIterator();
         
         director = new Director();
+        impressionStore = new ImpressionStore(resolveImpressionsFile());
+        setupImpressionControls();
 
         stopButton.setDisable(true);
         nextButton.setDisable(true);
@@ -114,6 +145,7 @@ public class Controller {
                 prevButton.setDisable(true);
                 startButton.setDisable(true);
                 removeProgressIndicator();
+                disableImpressionControls();
             }
         }
     }
@@ -133,6 +165,7 @@ public class Controller {
                 showNextImage();
             } else {
                 removeProgressIndicator();
+                disableImpressionControls();
             }
         }
     }
@@ -221,6 +254,7 @@ public class Controller {
             if (image != null) {
                 screen.setImage(image);
                 updateStatus("Предыдущее изображение");
+                updateImpressionField();
             }
         }
     }
@@ -231,6 +265,7 @@ public class Controller {
             if (image != null) {
                 screen.setImage(image);
                 updateProgressIndicator();
+                updateImpressionField();
             }
         } else {
             iter = slides.getIterator();
@@ -238,6 +273,7 @@ public class Controller {
             if (image != null) {
                 screen.setImage(image);
                 updateProgressIndicator();
+                updateImpressionField();
             }
         }
     }
@@ -251,7 +287,10 @@ public class Controller {
                 if (timeline != null && timeline.getStatus() == javafx.animation.Animation.Status.RUNNING) {
                     updateProgressIndicator();
                 }
+                updateImpressionField();
             }
+        } else {
+            disableImpressionControls();
         }
     }
     
@@ -345,5 +384,117 @@ public class Controller {
         if (statusLabel != null) {
             statusLabel.setText(message);
         }
+    }
+
+    @FXML
+    protected void onSaveImpressionClick() {
+        if (currentImageId == null || impressionTextArea == null) {
+            return;
+        }
+        String impression = impressionTextArea.getText();
+        String selectedEmotion = emotionComboBox != null ? emotionComboBox.getValue() : DEFAULT_EMOTION;
+        impressionStore.saveImpression(currentImageId, impression, selectedEmotion);
+        if (impressionStatusLabel != null) {
+            boolean textEmpty = impression == null || impression.isBlank();
+            boolean emotionDefault = selectedEmotion == null || selectedEmotion.isBlank() || DEFAULT_EMOTION.equals(selectedEmotion);
+            if (textEmpty && emotionDefault) {
+                impressionStatusLabel.setText("Впечатление очищено");
+            } else {
+                impressionStatusLabel.setText("Впечатление сохранено");
+            }
+        }
+    }
+
+    private void setupImpressionControls() {
+        if (impressionTextArea != null) {
+            impressionTextArea.textProperty().addListener((obs, oldVal, newVal) -> {
+                if (!impressionUpdatingInternally && currentImageId != null && impressionStatusLabel != null) {
+                    impressionStatusLabel.setText("Изменения не сохранены");
+                }
+            });
+        }
+        if (emotionComboBox != null) {
+            emotionComboBox.getItems().setAll(EMOTION_OPTIONS);
+            emotionComboBox.setValue(DEFAULT_EMOTION);
+            emotionComboBox.valueProperty().addListener((obs, oldVal, newVal) -> {
+                if (!impressionUpdatingInternally && currentImageId != null && impressionStatusLabel != null) {
+                    impressionStatusLabel.setText("Изменения не сохранены");
+                }
+            });
+        }
+        disableImpressionControls();
+    }
+
+    private void updateImpressionField() {
+        if (impressionTextArea == null) {
+            return;
+        }
+        if (iter == null) {
+            disableImpressionControls();
+            return;
+        }
+        String imageId = iter.getCurrentItemId();
+        currentImageId = imageId;
+        if (imageId == null || imageId.isEmpty()) {
+            disableImpressionControls();
+            return;
+        }
+        ImpressionStore.ImpressionRecord stored = impressionStore.getImpression(imageId);
+        String storedText = stored != null ? stored.text() : "";
+        String storedEmotion = stored != null && stored.emotion() != null && !stored.emotion().isBlank()
+                ? stored.emotion()
+                : DEFAULT_EMOTION;
+        if (emotionComboBox != null && storedEmotion != null && !emotionComboBox.getItems().contains(storedEmotion)) {
+            emotionComboBox.getItems().add(storedEmotion);
+        }
+
+        impressionUpdatingInternally = true;
+        impressionTextArea.setDisable(false);
+        impressionTextArea.setText(storedText);
+        if (emotionComboBox != null) {
+            emotionComboBox.setDisable(false);
+            emotionComboBox.setValue(storedEmotion);
+        }
+        impressionUpdatingInternally = false;
+
+        if (saveImpressionButton != null) {
+            saveImpressionButton.setDisable(false);
+        }
+        if (impressionStatusLabel != null) {
+            boolean textEmpty = storedText == null || storedText.isBlank();
+            boolean emotionDefault = storedEmotion == null || storedEmotion.isBlank() || DEFAULT_EMOTION.equals(storedEmotion);
+            if (textEmpty && emotionDefault) {
+                impressionStatusLabel.setText("Добавьте впечатление");
+            } else {
+                impressionStatusLabel.setText("Впечатление загружено");
+            }
+        }
+    }
+
+    private void disableImpressionControls() {
+        currentImageId = null;
+        if (impressionTextArea != null) {
+            impressionUpdatingInternally = true;
+            impressionTextArea.clear();
+            impressionUpdatingInternally = false;
+            impressionTextArea.setDisable(true);
+        }
+        if (emotionComboBox != null) {
+            impressionUpdatingInternally = true;
+            emotionComboBox.setValue(DEFAULT_EMOTION);
+            impressionUpdatingInternally = false;
+            emotionComboBox.setDisable(true);
+        }
+        if (saveImpressionButton != null) {
+            saveImpressionButton.setDisable(true);
+        }
+        if (impressionStatusLabel != null) {
+            impressionStatusLabel.setText("Нет изображения");
+        }
+    }
+
+    private Path resolveImpressionsFile() {
+        return Paths.get(System.getProperty("user.dir"),
+                "src", "main", "resources", "org", "swe", "slideshow", "impressions.json");
     }
 }
