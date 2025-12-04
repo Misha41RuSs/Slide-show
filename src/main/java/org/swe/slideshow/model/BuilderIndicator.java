@@ -3,7 +3,7 @@ package org.swe.slideshow.model;
 import javafx.scene.paint.Color;
 
 public class BuilderIndicator implements Builder {
-    private Indicator indicator = new Indicator();
+    private final Indicator indicator = new Indicator();
     
     @Override
     public void setView(int N, char norm, char select) {
@@ -17,7 +17,7 @@ public class BuilderIndicator implements Builder {
     private Color getColorFromChar(char c) {
         switch (c) {
             case 'r': case 'R': return Color.RED;
-            case 'g': case 'G': return Color.LIGHTGRAY; // Серый
+            case 'g': case 'G': return Color.LIGHTGRAY;
             case 'b': case 'B': return Color.BLUE;
             case 'y': case 'Y': return Color.YELLOW;
             case 'o': case 'O': return Color.ORANGE;

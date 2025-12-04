@@ -48,6 +48,15 @@
                         style="-fx-background-color: #FF9800; -fx-text-fill: white;"/>
             </HBox>
             
+            <HBox spacing="10" alignment="CENTER">
+                <Label text="Встроенный альбом:"/>
+                <ComboBox fx:id="embeddedAlbumComboBox" prefWidth="220"/>
+                <Button fx:id="loadEmbeddedButton"
+                        text="Показать"
+                        onAction="#onLoadEmbeddedClick"/>
+                <Region HBox.hgrow="ALWAYS"/>
+            </HBox>
+            
             <Label fx:id="statusLabel" text="Готов к работе"/>
         </VBox>
     </top>

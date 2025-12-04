@@ -171,10 +171,8 @@ public class AlbumStore {
                     case 'u' -> {
                         if (i + 5 < value.length()) {
                             String hex = value.substring(i + 2, i + 6);
-                            try {
+                            if (isHexSequence(hex)) {
                                 builder.append((char) Integer.parseInt(hex, 16));
-                            } catch (NumberFormatException e) {
-                                // Skip invalid sequence
                             }
                             i += 4;
                         }
@@ -187,6 +185,18 @@ public class AlbumStore {
             }
         }
         return builder.toString();
+    }
+
+    private static boolean isHexSequence(String value) {
+        if (value == null || value.length() != 4) {
+            return false;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            if (Character.digit(value.charAt(i), 16) == -1) {
+                return false;
+            }
+        }
+        return true;
     }
 }
 

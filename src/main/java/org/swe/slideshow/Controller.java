@@ -10,6 +10,7 @@ import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TextInputDialog;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.HBox;
@@ -20,17 +21,27 @@ import javafx.util.Duration;
 import org.swe.slideshow.model.AlbumItem;
 import org.swe.slideshow.model.AlbumStore;
 import org.swe.slideshow.model.ConcreteAggregate;
-import org.swe.slideshow.model.Iterator;
 import org.swe.slideshow.model.Builder;
 import org.swe.slideshow.model.BuilderIndicator;
 import org.swe.slideshow.model.Director;
 import org.swe.slideshow.model.Indicator;
+import org.swe.slideshow.model.SlideNavigator;
+import org.swe.slideshow.model.embedded.EmbeddedAlbum;
+import org.swe.slideshow.model.embedded.EmbeddedImageManager;
+import org.swe.slideshow.model.factory.AggregateComponentsFactory;
+import org.swe.slideshow.model.factory.DirectoryAggregateFactory;
+import org.swe.slideshow.model.factory.EmbeddedAggregateFactory;
 import org.swe.slideshow.visual.EmotionPalette;
 import org.swe.slideshow.visual.EmotionPalette.EmotionStyle;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
 
 public class Controller {
     private static final String DEFAULT_EMOTION = EmotionPalette.DEFAULT_EMOTION;
@@ -94,8 +105,14 @@ public class Controller {
     @FXML
     private Button loadAlbumButton;
 
+    @FXML
+    private ComboBox<String> embeddedAlbumComboBox;
+
+    @FXML
+    private Button loadEmbeddedButton;
+
     private ConcreteAggregate slides;
-    private Iterator iter;
+    private SlideNavigator navigator;
     private Timeline timeline;
     private String selectedDirectory = "";
     private String selectedFormat = "*";
@@ -107,6 +124,8 @@ public class Controller {
     private long startTime;
     private float maxTime = 300.0f;
     private boolean impressionUpdatingInternally;
+    private final EmbeddedImageManager embeddedImageManager = new EmbeddedImageManager();
+    private final Map<String, EmbeddedAlbum> embeddedAlbums = new LinkedHashMap<>();
     
     @FXML
     public void initialize() {
@@ -117,10 +136,11 @@ public class Controller {
         delayTextField.setText("2000");
 
         slides = new ConcreteAggregate("", "*");
-        iter = slides.getIterator();
+        navigator = new SlideNavigator(slides);
         
         director = new Director();
         setupImpressionControls();
+        setupEmbeddedAlbums();
 
         stopButton.setDisable(true);
         nextButton.setDisable(true);
@@ -144,20 +164,11 @@ public class Controller {
                 selectedFormat = format;
             }
             
-            slides = new ConcreteAggregate(selectedDirectory, selectedFormat);
-            iter = slides.getIterator();
-            
-            int imageCount = slides.getImageCount();
-            if (imageCount > 0) {
-                updateStatus("Найдено изображений: " + imageCount);
-                removeProgressIndicator();
-                updateControlsForImageCount(imageCount);
-                showNextImage();
-            } else {
-                updateStatus("Изображения не найдены в выбранном каталоге");
-                removeProgressIndicator();
-                updateControlsForImageCount(0);
-            }
+            AggregateComponentsFactory factory = new DirectoryAggregateFactory(selectedDirectory, selectedFormat);
+            loadFromFactory(factory,
+                    count -> "Найдено изображений: " + count,
+                    "Изображения не найдены в выбранном каталоге",
+                    false);
         }
     }
     
@@ -167,7 +178,9 @@ public class Controller {
         if (format != null && !selectedDirectory.isEmpty()) {
             selectedFormat = format;
             slides.setImageFormat(selectedFormat);
-            iter = slides.getIterator();
+            if (navigator != null) {
+                navigator.refresh();
+            }
             
             int imageCount = slides.getImageCount();
             updateStatus("Найдено изображений: " + imageCount);
@@ -259,8 +272,8 @@ public class Controller {
     
     @FXML
     protected void onPrevClick() {
-        if (iter != null && slides.getImageCount() > 0) {
-            Image image = (Image) iter.preview();
+        if (navigator != null && navigator.hasSlides()) {
+            Image image = navigator.previousImage();
             if (image != null) {
                 screen.setImage(image);
                 updateStatus("Предыдущее изображение");
@@ -270,27 +283,20 @@ public class Controller {
     }
     
     private void handleSlideShow(ActionEvent event) {
-        if (iter.hasNext(1)) {
-            Image image = (Image) iter.next();
-            if (image != null) {
-                screen.setImage(image);
-                updateProgressIndicator();
-                updateImpressionField();
-            }
-        } else {
-            iter = slides.getIterator();
-            Image image = (Image) iter.next();
-            if (image != null) {
-                screen.setImage(image);
-                updateProgressIndicator();
-                updateImpressionField();
-            }
+        if (navigator == null || !navigator.hasSlides()) {
+            return;
+        }
+        Image image = navigator.nextImage();
+        if (image != null) {
+            screen.setImage(image);
+            updateProgressIndicator();
+            updateImpressionField();
         }
     }
     
     private void showNextImage() {
-        if (iter != null && slides.getImageCount() > 0) {
-            Image image = (Image) iter.next();
+        if (navigator != null && navigator.hasSlides()) {
+            Image image = navigator.nextImage();
             if (image != null) {
                 screen.setImage(image);
                 updateStatus("Изображение загружено");
@@ -363,8 +369,8 @@ public class Controller {
     }
     
     private void updateProgressIndicator() {
-        if (progressIndicator != null && iter != null) {
-            int currentIndex = iter.getCurrentIndex();
+        if (progressIndicator != null && navigator != null) {
+            int currentIndex = navigator.currentIndex();
             int totalSlides = slides.getImageCount();
             progressIndicator.updateProgress(currentIndex, totalSlides);
             progressIndicator.setTitle("Прогресс слайд-шоу");
@@ -398,7 +404,7 @@ public class Controller {
 
     @FXML
     protected void onSaveImpressionClick() {
-        AlbumItem currentItem = iter != null ? iter.getCurrentItem() : null;
+        AlbumItem currentItem = navigator != null ? navigator.currentItem() : null;
         if (currentItem == null || impressionTextArea == null) {
             return;
         }
@@ -433,9 +439,14 @@ public class Controller {
 
         File selectedDir = directoryChooser.showDialog(screen.getScene().getWindow());
         if (selectedDir != null) {
+            Optional<String> albumNameResult = promptAlbumName();
+            if (albumNameResult.isEmpty()) {
+                updateStatus("Сохранение альбома отменено");
+                return;
+            }
             try {
                 AlbumItem[] items = slides.getAllItems();
-                Path albumPath = selectedDir.toPath().resolve("album_" + System.currentTimeMillis());
+                Path albumPath = buildAlbumPath(selectedDir.toPath(), albumNameResult.get());
                 AlbumStore.saveAlbum(albumPath, items);
                 updateStatus("Альбом сохранен: " + albumPath.getFileName());
             } catch (IOException e) {
@@ -458,7 +469,11 @@ public class Controller {
                 AlbumItem[] items = AlbumStore.loadAlbum(albumPath);
                 
                 slides.loadFromAlbumItems(items);
-                iter = slides.getIterator();
+                if (navigator != null) {
+                    navigator.refresh();
+                } else {
+                    navigator = new SlideNavigator(slides);
+                }
                 
                 int imageCount = slides.getImageCount();
                 if (imageCount > 0) {
@@ -476,10 +491,28 @@ public class Controller {
         }
     }
 
+    @FXML
+    protected void onLoadEmbeddedClick() {
+        if (embeddedAlbumComboBox == null || embeddedAlbumComboBox.getValue() == null) {
+            updateStatus("Нет доступных встроенных альбомов");
+            return;
+        }
+        EmbeddedAlbum album = embeddedAlbums.get(embeddedAlbumComboBox.getValue());
+        if (album == null) {
+            updateStatus("Не удалось определить встроенный альбом");
+            return;
+        }
+        AggregateComponentsFactory factory = new EmbeddedAggregateFactory(embeddedImageManager, album);
+        loadFromFactory(factory,
+                count -> "Загружен встроенный альбом («" + album.displayName() + "»): " + count + " изображений",
+                "Встроенный альбом пуст",
+                true);
+    }
+
     private void setupImpressionControls() {
         if (impressionTextArea != null) {
             impressionTextArea.textProperty().addListener((obs, oldVal, newVal) -> {
-                if (!impressionUpdatingInternally && iter != null && iter.getCurrentItem() != null && impressionStatusLabel != null) {
+                if (!impressionUpdatingInternally && navigator != null && navigator.currentItem() != null && impressionStatusLabel != null) {
                     impressionStatusLabel.setText("Изменения не сохранены");
                 }
             });
@@ -488,7 +521,7 @@ public class Controller {
             emotionComboBox.getItems().setAll(EMOTION_OPTIONS);
             emotionComboBox.setValue(DEFAULT_EMOTION);
             emotionComboBox.valueProperty().addListener((obs, oldVal, newVal) -> {
-                if (!impressionUpdatingInternally && iter != null && iter.getCurrentItem() != null && impressionStatusLabel != null) {
+                if (!impressionUpdatingInternally && navigator != null && navigator.currentItem() != null && impressionStatusLabel != null) {
                     impressionStatusLabel.setText("Изменения не сохранены");
                 }
             });
@@ -496,15 +529,37 @@ public class Controller {
         disableImpressionControls();
     }
 
+    private void setupEmbeddedAlbums() {
+        if (embeddedAlbumComboBox == null) {
+            return;
+        }
+        embeddedAlbums.clear();
+        for (EmbeddedAlbum album : embeddedImageManager.discoverAlbums()) {
+            embeddedAlbums.put(album.displayName(), album);
+        }
+        embeddedAlbumComboBox.getItems().setAll(embeddedAlbums.keySet());
+        if (!embeddedAlbums.isEmpty()) {
+            embeddedAlbumComboBox.setValue(embeddedAlbumComboBox.getItems().get(0));
+            toggleEmbeddedButton(false);
+        } else {
+            toggleEmbeddedButton(true);
+        }
+        embeddedAlbumComboBox.valueProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null) {
+                toggleEmbeddedButton(false);
+            }
+        });
+    }
+
     private void updateImpressionField() {
         if (impressionTextArea == null) {
             return;
         }
-        if (iter == null) {
+        if (navigator == null) {
             disableImpressionControls();
             return;
         }
-        AlbumItem currentItem = iter.getCurrentItem();
+        AlbumItem currentItem = navigator.currentItem();
         if (currentItem == null) {
             disableImpressionControls();
             return;
@@ -572,6 +627,95 @@ public class Controller {
         EmotionStyle style = EmotionPalette.styleFor(item != null ? item.getEmotion() : null);
         if (imageWrapper != null) {
             imageWrapper.setStyle(String.format("-fx-border-color: %s; -fx-border-width: 6; -fx-border-radius: 18; -fx-background-radius: 18; -fx-padding: 6;", style.cssColor()));
+        }
+    }
+
+    private Optional<String> promptAlbumName() {
+        TextInputDialog dialog = new TextInputDialog("Мой альбом");
+        dialog.setTitle("Сохранение альбома");
+        dialog.setHeaderText("Введите имя папки для альбома");
+        dialog.setContentText("Имя:");
+        return dialog.showAndWait().map(this::sanitizeAlbumName);
+    }
+
+    private Path buildAlbumPath(Path baseDir, String rawName) throws IOException {
+        String cleanedName = rawName == null || rawName.isBlank()
+                ? "album_" + System.currentTimeMillis()
+                : rawName.trim();
+        Path candidate = baseDir.resolve(cleanedName);
+        if (!Files.exists(candidate)) {
+            return candidate;
+        }
+        return makeUniquePath(candidate);
+    }
+
+    private String sanitizeAlbumName(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replaceAll("[\\\\/:*?\"<>|]", "").trim();
+    }
+
+    private Path makeUniquePath(Path basePath) throws IOException {
+        int counter = 1;
+        Path current = basePath;
+        while (Files.exists(current)) {
+            String fileName = basePath.getFileName().toString();
+            Path parent = basePath.getParent();
+            String candidateName = fileName + "_" + counter;
+            current = parent != null ? parent.resolve(candidateName) : Path.of(candidateName);
+            counter++;
+        }
+        return current;
+    }
+
+    private void loadFromFactory(AggregateComponentsFactory factory,
+                                 Function<Integer, String> successMessageSupplier,
+                                 String emptyMessage,
+                                 boolean disableEmbeddedButton) {
+        try {
+            ConcreteAggregate aggregate = factory.createAggregate();
+            SlideNavigator newNavigator = factory.createNavigator(aggregate);
+            slides = aggregate;
+            navigator = newNavigator;
+            handleDatasetChange(successMessageSupplier, emptyMessage, disableEmbeddedButton);
+        } catch (IOException e) {
+            updateStatus("Ошибка загрузки: " + e.getMessage());
+            removeProgressIndicator();
+            updateControlsForImageCount(0);
+        }
+    }
+
+    private void handleDatasetChange(Function<Integer, String> successMessageSupplier,
+                                     String emptyMessage,
+                                     boolean disableEmbeddedButton) {
+        int imageCount = slides != null ? slides.getImageCount() : 0;
+        if (navigator != null) {
+            navigator.refresh();
+        }
+        if (imageCount > 0) {
+            removeProgressIndicator();
+            updateControlsForImageCount(imageCount);
+            showNextImage();
+            if (successMessageSupplier != null) {
+                updateStatus(successMessageSupplier.apply(imageCount));
+            }
+        } else {
+            removeProgressIndicator();
+            updateControlsForImageCount(0);
+            if (emptyMessage != null) {
+                updateStatus(emptyMessage);
+            }
+            disableImpressionControls();
+        }
+        if (disableEmbeddedButton) {
+            toggleEmbeddedButton(true);
+        }
+    }
+
+    private void toggleEmbeddedButton(boolean disable) {
+        if (loadEmbeddedButton != null) {
+            loadEmbeddedButton.setDisable(disable);
         }
     }
 

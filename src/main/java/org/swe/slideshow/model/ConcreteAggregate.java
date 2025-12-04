@@ -9,12 +9,11 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.stream.Stream;
 
-public class ConcreteAggregate implements Aggregate {
+public class ConcreteAggregate {
     private String filetop;
     private String imageFormat;
     private final SlideCollection slideCollection;
     
-    @Override
     public Iterator getIterator() {
         return new ImageIterator(slideCollection);
     }
