@@ -45,3 +45,14 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### Diagrams ###
+*.puml
+*.plantuml
+*.uml
+diagram.png
+docs/diagrams/
+docs/uml/
+
+mvnw
+mvnw.cmd
