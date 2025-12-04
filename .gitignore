@@ -51,8 +51,6 @@ build/
 *.plantuml
 *.uml
 diagram.png
-docs/diagrams/
-docs/uml/
 
 mvnw
 mvnw.cmd
