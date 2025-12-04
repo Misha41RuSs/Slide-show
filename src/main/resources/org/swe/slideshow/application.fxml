@@ -39,6 +39,13 @@
                         onAction="#onPrevClick"/>
                 <Button fx:id="nextButton" text="Следующее ►" 
                         onAction="#onNextClick"/>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Button fx:id="loadAlbumButton" text="📂 Загрузить альбом" 
+                        onAction="#onLoadAlbumClick"
+                        style="-fx-background-color: #2196F3; -fx-text-fill: white;"/>
+                <Button fx:id="saveAlbumButton" text="💾 Сохранить альбом" 
+                        onAction="#onSaveAlbumClick"
+                        style="-fx-background-color: #FF9800; -fx-text-fill: white;"/>
             </HBox>
             
             <Label fx:id="statusLabel" text="Готов к работе"/>
@@ -51,11 +58,14 @@
                 <Insets top="20" right="20" bottom="20" left="20"/>
             </padding>
             
-            <ImageView fx:id="screen" 
-                       fitWidth="700" 
-                       fitHeight="450" 
-                       preserveRatio="true"
-                       style="-fx-border-color: #cccccc; -fx-border-width: 2;"/>
+            <StackPane fx:id="imageWrapper"
+                       alignment="CENTER"
+                       style="-fx-border-color: #cccccc; -fx-border-width: 4; -fx-border-radius: 18; -fx-background-radius: 18; -fx-padding: 6;">
+                <ImageView fx:id="screen" 
+                           fitWidth="700" 
+                           fitHeight="450" 
+                           preserveRatio="true"/>
+            </StackPane>
             
             <Label text="Впечатления о кадре"/>
             <TextArea fx:id="impressionTextArea"

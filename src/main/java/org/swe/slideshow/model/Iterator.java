@@ -6,6 +6,7 @@ public interface Iterator {
     Object preview();
     int getCurrentIndex();
     String getCurrentItemId();
+    AlbumItem getCurrentItem();
 }
 
 

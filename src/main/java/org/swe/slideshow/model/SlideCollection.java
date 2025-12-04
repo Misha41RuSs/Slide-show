@@ -4,26 +4,26 @@ import java.util.Arrays;
 
 class SlideCollection {
     private static final int DEFAULT_CAPACITY = 16;
-    private String[] imagePaths;
+    private AlbumItem[] items;
     private int size;
 
     SlideCollection() {
-        imagePaths = new String[DEFAULT_CAPACITY];
+        items = new AlbumItem[DEFAULT_CAPACITY];
     }
 
-    void add(String imagePath) {
-        if (imagePath == null || imagePath.isBlank()) {
+    void add(AlbumItem item) {
+        if (item == null || item.getImagePath() == null || item.getImagePath().isBlank()) {
             return;
         }
         ensureCapacity(size + 1);
-        imagePaths[size++] = imagePath;
+        items[size++] = item;
     }
 
-    String getPath(int index) {
+    AlbumItem getItem(int index) {
         if (index < 0 || index >= size) {
             return null;
         }
-        return imagePaths[index];
+        return items[index];
     }
 
     int size() {
@@ -31,19 +31,19 @@ class SlideCollection {
     }
 
     void clear() {
-        Arrays.fill(imagePaths, 0, size, null);
+        Arrays.fill(items, 0, size, null);
         size = 0;
     }
 
     private void ensureCapacity(int desiredCapacity) {
-        if (desiredCapacity <= imagePaths.length) {
+        if (desiredCapacity <= items.length) {
             return;
         }
-        int newCapacity = imagePaths.length;
+        int newCapacity = items.length;
         while (newCapacity < desiredCapacity) {
             newCapacity *= 2;
         }
-        imagePaths = Arrays.copyOf(imagePaths, newCapacity);
+        items = Arrays.copyOf(items, newCapacity);
     }
 }
 

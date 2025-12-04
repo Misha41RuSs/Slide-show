@@ -14,16 +14,26 @@ import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
+import javafx.scene.layout.StackPane;
 import javafx.stage.DirectoryChooser;
 import javafx.util.Duration;
-import org.swe.slideshow.model.*;
+import org.swe.slideshow.model.AlbumItem;
+import org.swe.slideshow.model.AlbumStore;
+import org.swe.slideshow.model.ConcreteAggregate;
+import org.swe.slideshow.model.Iterator;
+import org.swe.slideshow.model.Builder;
+import org.swe.slideshow.model.BuilderIndicator;
+import org.swe.slideshow.model.Director;
+import org.swe.slideshow.model.Indicator;
+import org.swe.slideshow.visual.EmotionPalette;
+import org.swe.slideshow.visual.EmotionPalette.EmotionStyle;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 
 public class Controller {
-    private static final String DEFAULT_EMOTION = "🙂 Нейтрально";
+    private static final String DEFAULT_EMOTION = EmotionPalette.DEFAULT_EMOTION;
     private static final String[] EMOTION_OPTIONS = new String[]{
             DEFAULT_EMOTION,
             "😊 Радость",
@@ -33,6 +43,9 @@ public class Controller {
             "😌 Спокойствие",
             "😎 Вдохновение"
     };
+    @FXML
+    private StackPane imageWrapper;
+
     @FXML
     private ImageView screen;
     
@@ -74,7 +87,13 @@ public class Controller {
 
     @FXML
     private ComboBox<String> emotionComboBox;
-    
+
+    @FXML
+    private Button saveAlbumButton;
+
+    @FXML
+    private Button loadAlbumButton;
+
     private ConcreteAggregate slides;
     private Iterator iter;
     private Timeline timeline;
@@ -87,8 +106,6 @@ public class Controller {
     private Timeline timerTimeline;
     private long startTime;
     private float maxTime = 300.0f;
-    private ImpressionStore impressionStore;
-    private String currentImageId;
     private boolean impressionUpdatingInternally;
     
     @FXML
@@ -103,14 +120,15 @@ public class Controller {
         iter = slides.getIterator();
         
         director = new Director();
-        impressionStore = new ImpressionStore(resolveImpressionsFile());
         setupImpressionControls();
 
         stopButton.setDisable(true);
         nextButton.setDisable(true);
         prevButton.setDisable(true);
+        saveAlbumButton.setDisable(true);
+        resetEmotionVisuals();
         
-        updateStatus("Выберите каталог с изображениями");
+        updateStatus("Выберите каталог с изображениями или загрузите альбом");
     }
     
     @FXML
@@ -132,20 +150,13 @@ public class Controller {
             int imageCount = slides.getImageCount();
             if (imageCount > 0) {
                 updateStatus("Найдено изображений: " + imageCount);
-                nextButton.setDisable(false);
-                prevButton.setDisable(false);
-                startButton.setDisable(false);
-
                 removeProgressIndicator();
-
+                updateControlsForImageCount(imageCount);
                 showNextImage();
             } else {
                 updateStatus("Изображения не найдены в выбранном каталоге");
-                nextButton.setDisable(true);
-                prevButton.setDisable(true);
-                startButton.setDisable(true);
                 removeProgressIndicator();
-                disableImpressionControls();
+                updateControlsForImageCount(0);
             }
         }
     }
@@ -162,10 +173,11 @@ public class Controller {
             updateStatus("Найдено изображений: " + imageCount);
             if (imageCount > 0) {
                 removeProgressIndicator();
+                updateControlsForImageCount(imageCount);
                 showNextImage();
             } else {
                 removeProgressIndicator();
-                disableImpressionControls();
+                updateControlsForImageCount(0);
             }
         }
     }
@@ -231,13 +243,11 @@ public class Controller {
         removeProgressIndicator();
         removeTimerIndicator();
         
-        startButton.setDisable(false);
         stopButton.setDisable(true);
-        nextButton.setDisable(false);
-        prevButton.setDisable(false);
         selectDirectoryButton.setDisable(false);
         formatComboBox.setDisable(false);
         delayTextField.setDisable(false);
+        updateControlsForImageCount(slides.getImageCount());
         
         updateStatus("Слайд-шоу остановлено");
     }
@@ -388,12 +398,16 @@ public class Controller {
 
     @FXML
     protected void onSaveImpressionClick() {
-        if (currentImageId == null || impressionTextArea == null) {
+        AlbumItem currentItem = iter != null ? iter.getCurrentItem() : null;
+        if (currentItem == null || impressionTextArea == null) {
             return;
         }
         String impression = impressionTextArea.getText();
         String selectedEmotion = emotionComboBox != null ? emotionComboBox.getValue() : DEFAULT_EMOTION;
-        impressionStore.saveImpression(currentImageId, impression, selectedEmotion);
+        
+        currentItem.setImpressionText(impression);
+        currentItem.setEmotion(selectedEmotion);
+        
         if (impressionStatusLabel != null) {
             boolean textEmpty = impression == null || impression.isBlank();
             boolean emotionDefault = selectedEmotion == null || selectedEmotion.isBlank() || DEFAULT_EMOTION.equals(selectedEmotion);
@@ -403,12 +417,69 @@ public class Controller {
                 impressionStatusLabel.setText("Впечатление сохранено");
             }
         }
+        applyEmotionTheme(currentItem);
+    }
+
+    @FXML
+    protected void onSaveAlbumClick() {
+        if (slides.getImageCount() == 0) {
+            updateStatus("Нет изображений для сохранения");
+            return;
+        }
+
+        javafx.stage.DirectoryChooser directoryChooser = new javafx.stage.DirectoryChooser();
+        directoryChooser.setTitle("Выберите место для сохранения альбома");
+        directoryChooser.setInitialDirectory(new File(System.getProperty("user.home")));
+
+        File selectedDir = directoryChooser.showDialog(screen.getScene().getWindow());
+        if (selectedDir != null) {
+            try {
+                AlbumItem[] items = slides.getAllItems();
+                Path albumPath = selectedDir.toPath().resolve("album_" + System.currentTimeMillis());
+                AlbumStore.saveAlbum(albumPath, items);
+                updateStatus("Альбом сохранен: " + albumPath.getFileName());
+            } catch (IOException e) {
+                e.printStackTrace();
+                updateStatus("Ошибка при сохранении альбома: " + e.getMessage());
+            }
+        }
+    }
+
+    @FXML
+    protected void onLoadAlbumClick() {
+        javafx.stage.DirectoryChooser directoryChooser = new javafx.stage.DirectoryChooser();
+        directoryChooser.setTitle("Выберите папку альбома");
+        directoryChooser.setInitialDirectory(new File(System.getProperty("user.home")));
+
+        File selectedDir = directoryChooser.showDialog(screen.getScene().getWindow());
+        if (selectedDir != null) {
+            try {
+                Path albumPath = selectedDir.toPath();
+                AlbumItem[] items = AlbumStore.loadAlbum(albumPath);
+                
+                slides.loadFromAlbumItems(items);
+                iter = slides.getIterator();
+                
+                int imageCount = slides.getImageCount();
+                if (imageCount > 0) {
+                    updateStatus("Альбом загружен: " + imageCount + " изображений");
+                    updateControlsForImageCount(imageCount);
+                    showNextImage();
+                } else {
+                    updateStatus("Альбом пуст или поврежден");
+                    updateControlsForImageCount(0);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+                updateStatus("Ошибка при загрузке альбома: " + e.getMessage());
+            }
+        }
     }
 
     private void setupImpressionControls() {
         if (impressionTextArea != null) {
             impressionTextArea.textProperty().addListener((obs, oldVal, newVal) -> {
-                if (!impressionUpdatingInternally && currentImageId != null && impressionStatusLabel != null) {
+                if (!impressionUpdatingInternally && iter != null && iter.getCurrentItem() != null && impressionStatusLabel != null) {
                     impressionStatusLabel.setText("Изменения не сохранены");
                 }
             });
@@ -417,7 +488,7 @@ public class Controller {
             emotionComboBox.getItems().setAll(EMOTION_OPTIONS);
             emotionComboBox.setValue(DEFAULT_EMOTION);
             emotionComboBox.valueProperty().addListener((obs, oldVal, newVal) -> {
-                if (!impressionUpdatingInternally && currentImageId != null && impressionStatusLabel != null) {
+                if (!impressionUpdatingInternally && iter != null && iter.getCurrentItem() != null && impressionStatusLabel != null) {
                     impressionStatusLabel.setText("Изменения не сохранены");
                 }
             });
@@ -433,16 +504,15 @@ public class Controller {
             disableImpressionControls();
             return;
         }
-        String imageId = iter.getCurrentItemId();
-        currentImageId = imageId;
-        if (imageId == null || imageId.isEmpty()) {
+        AlbumItem currentItem = iter.getCurrentItem();
+        if (currentItem == null) {
             disableImpressionControls();
             return;
         }
-        ImpressionStore.ImpressionRecord stored = impressionStore.getImpression(imageId);
-        String storedText = stored != null ? stored.text() : "";
-        String storedEmotion = stored != null && stored.emotion() != null && !stored.emotion().isBlank()
-                ? stored.emotion()
+        
+        String storedText = currentItem.getImpressionText() != null ? currentItem.getImpressionText() : "";
+        String storedEmotion = currentItem.getEmotion() != null && !currentItem.getEmotion().isBlank()
+                ? currentItem.getEmotion()
                 : DEFAULT_EMOTION;
         if (emotionComboBox != null && storedEmotion != null && !emotionComboBox.getItems().contains(storedEmotion)) {
             emotionComboBox.getItems().add(storedEmotion);
@@ -469,10 +539,10 @@ public class Controller {
                 impressionStatusLabel.setText("Впечатление загружено");
             }
         }
+        applyEmotionTheme(currentItem);
     }
 
     private void disableImpressionControls() {
-        currentImageId = null;
         if (impressionTextArea != null) {
             impressionUpdatingInternally = true;
             impressionTextArea.clear();
@@ -491,10 +561,34 @@ public class Controller {
         if (impressionStatusLabel != null) {
             impressionStatusLabel.setText("Нет изображения");
         }
+        applyEmotionTheme(null);
     }
 
-    private Path resolveImpressionsFile() {
-        return Paths.get(System.getProperty("user.dir"),
-                "src", "main", "resources", "org", "swe", "slideshow", "impressions.json");
+    private void resetEmotionVisuals() {
+        applyEmotionTheme(null);
+    }
+
+    private void applyEmotionTheme(AlbumItem item) {
+        EmotionStyle style = EmotionPalette.styleFor(item != null ? item.getEmotion() : null);
+        if (imageWrapper != null) {
+            imageWrapper.setStyle(String.format("-fx-border-color: %s; -fx-border-width: 6; -fx-border-radius: 18; -fx-background-radius: 18; -fx-padding: 6;", style.cssColor()));
+        }
+    }
+
+    private void updateControlsForImageCount(int count) {
+        boolean hasImages = count > 0;
+        boolean timelineActive = timeline != null && timeline.getStatus() == Timeline.Status.RUNNING;
+        nextButton.setDisable(!hasImages || timelineActive);
+        prevButton.setDisable(!hasImages || timelineActive);
+        if (!timelineActive) {
+            startButton.setDisable(!hasImages);
+        }
+        saveAlbumButton.setDisable(!hasImages || timelineActive);
+        if (!hasImages) {
+            disableImpressionControls();
+            if (screen != null) {
+                screen.setImage(null);
+            }
+        }
     }
 }

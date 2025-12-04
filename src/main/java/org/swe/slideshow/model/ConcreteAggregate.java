@@ -41,28 +41,28 @@ public class ConcreteAggregate implements Aggregate {
             paths.filter(Files::isRegularFile)
                     .filter(this::isSupportedImage)
                     .filter(this::matchesSelectedFormat)
-                    .forEach(path -> slideCollection.add(path.toAbsolutePath().toString()));
+                    .forEach(path -> slideCollection.add(new AlbumItem(path.toAbsolutePath().toString())));
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
     private boolean isSupportedImage(Path path) {
-        String fileName = path.getFileName().toString().toLowerCase();
-        return fileName.endsWith(".png") ||
-                fileName.endsWith(".jpg") ||
-                fileName.endsWith(".jpeg") ||
-                fileName.endsWith(".gif") ||
-                fileName.endsWith(".bmp");
+                     String fileName = path.getFileName().toString().toLowerCase();
+                     return fileName.endsWith(".png") || 
+                            fileName.endsWith(".jpg") || 
+                            fileName.endsWith(".jpeg") ||
+                            fileName.endsWith(".gif") ||
+                            fileName.endsWith(".bmp");
     }
 
     private boolean matchesSelectedFormat(Path path) {
         if (imageFormat == null || imageFormat.isEmpty() || "*".equals(imageFormat)) {
-            return true;
-        }
-        String fileName = path.getFileName().toString().toLowerCase();
-        String format = imageFormat.toLowerCase().replace("*", "").replace(".", "");
-        return fileName.endsWith("." + format);
+                         return true;
+                     }
+                     String fileName = path.getFileName().toString().toLowerCase();
+                     String format = imageFormat.toLowerCase().replace("*", "").replace(".", "");
+                     return fileName.endsWith("." + format);
     }
     
     public void setFiletop(String filetop) {
@@ -78,6 +78,26 @@ public class ConcreteAggregate implements Aggregate {
     public int getImageCount() {
         return slideCollection.size();
     }
+
+    public void loadFromAlbumItems(AlbumItem[] items) {
+        slideCollection.clear();
+        if (items != null) {
+            for (AlbumItem item : items) {
+                if (item != null) {
+                    slideCollection.add(item);
+                }
+            }
+        }
+    }
+
+    public AlbumItem[] getAllItems() {
+        int size = slideCollection.size();
+        AlbumItem[] result = new AlbumItem[size];
+        for (int i = 0; i < size; i++) {
+            result[i] = slideCollection.getItem(i);
+        }
+        return result;
+    }
     
     private class ImageIterator implements Iterator {
         private final SlideCollection collection;
@@ -88,12 +108,12 @@ public class ConcreteAggregate implements Aggregate {
         }
         
         private Image getImage(int index) {
-            String imagePath = collection.getPath(index);
-            if (imagePath == null) {
+            AlbumItem item = collection.getItem(index);
+            if (item == null || item.getImagePath() == null) {
                 return null;
             }
             
-            Path path = Paths.get(imagePath);
+            Path path = Paths.get(item.getImagePath());
             try (InputStream stream = Files.newInputStream(path)) {
                 return new Image(stream);
             } catch (IOException e) {
@@ -142,10 +162,16 @@ public class ConcreteAggregate implements Aggregate {
 
         @Override
         public String getCurrentItemId() {
-            if (current < 0) {
+            AlbumItem item = getCurrentItem();
+            return item != null ? item.getImagePath() : null;
+        }
+
+        @Override
+        public AlbumItem getCurrentItem() {
+            if (current < 0 || current >= collection.size()) {
                 return null;
             }
-            return collection.getPath(current);
+            return collection.getItem(current);
         }
     }
 }
