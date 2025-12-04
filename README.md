@@ -1,5 +1,9 @@
 # Альбом впечатлений
 
+## Диграмма последовательности
+![UML Diagram](docs/uml/sequence.jpg)
+
+## Диаграмма классов
 ![UML Diagram](docs/uml/classes.jpg)
 
 ## Кратко о приложении
